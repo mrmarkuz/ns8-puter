@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2022 Nethesis S.r.l.
+# Copyright (C) 2023 Nethesis S.r.l.
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 
@@ -7,26 +7,29 @@
 # This systemd unit starts a puter instance using Podman.
 # Most parts of this file come from podman-generate-systemd.
 #
-
 [Unit]
-Description=Podman puter.service
-Requires=mariadb-app.service puter-app.service
-Before=mariadb-app.service puter-app.service
+Description=puter server
 
 [Service]
 Environment=PODMAN_SYSTEMD_UNIT=%n
-EnvironmentFile=-%S/state/environment
+EnvironmentFile=%S/state/environment
+WorkingDirectory=%S/state
 Restart=always
-TimeoutStopSec=70
-ExecStartPre=/bin/rm -f %t/puter.pid %t/puter.pod-id
-ExecStartPre=/usr/bin/podman pod create --infra-conmon-pidfile %t/puter.pid \
-    --pod-id-file %t/puter.pod-id \
-    --name puter \
-    --publish 127.0.0.1:${TCP_PORT}:80 \
-    --replace
-ExecStart=/usr/bin/podman pod start --pod-id-file %t/puter.pod-id
-ExecStop=/usr/bin/podman pod stop --ignore --pod-id-file %t/puter.pod-id -t 10
-ExecStopPost=/usr/bin/podman pod rm --ignore -f --pod-id-file %t/puter.pod-id
+ExecStartPre=/bin/rm -f %t/puter.pid %t/puter.ctr-id
+ExecStartPre=-runagent discover-smarthost
+ExecStart=/usr/bin/podman run \
+    --detach \
+    --conmon-pidfile=%t/puter.pid \
+    --cidfile=%t/puter.ctr-id \
+    --cgroups=no-conmon \
+    --replace --name=%N \
+    --publish=127.0.0.1:${TCP_PORT}:4100 \
+    --env-file=environment \
+    --volume puter-config:/etc/puter:Z \
+    --volume puter-data:/var/puter:Z \
+    ${PUTER_IMAGE}
+ExecStop=/usr/bin/podman stop --ignore --cidfile %t/puter.ctr-id -t 10
+ExecStopPost=/usr/bin/podman rm --ignore -f --cidfile %t/puter.ctr-id
 PIDFile=%t/puter.pid
 Type=forking
 
